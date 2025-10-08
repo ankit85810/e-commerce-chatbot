@@ -4,5 +4,3 @@ chromadb
 semantic-router
 pandas
 python-dotenv
-sqlite3
-pathlib
