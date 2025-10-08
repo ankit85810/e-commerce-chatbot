@@ -4,3 +4,6 @@ chromadb
 semantic-router
 pandas
 python-dotenv
+langchain-huggingface
+langchain-chroma
+selenium
