@@ -8,3 +8,4 @@ langchain-huggingface
 langchain-chroma
 selenium
 transformers
+pip install semantic-router[local]
