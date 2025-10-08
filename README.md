@@ -1,4 +1,4 @@
-# E-commerce Chatbot 🛒🤖
+# E-commerce Chatbot 🛒🤖[LINK](https://flipkart-chatbot.streamlit.app/)
 
 This project implements an **AI-powered E-commerce Chatbot** capable of answering frequently asked questions (FAQs), handling small talk (chit-chat), and generating SQL queries for product-related data stored in a database.  
 It integrates **Groq API**, **Streamlit UI**, **ChromaDB**, and **SQLite** for seamless conversational AI with product database connectivity.
@@ -69,6 +69,10 @@ E-commerce-chatbot/
  
                       
 ```
+## ScreenShot 
+
+
+<img width="1916" height="872" alt="image" src="https://github.com/user-attachments/assets/15e6bb76-961d-4560-a91a-627b89b39004" />
 
 ---
 
