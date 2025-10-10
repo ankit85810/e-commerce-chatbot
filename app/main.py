@@ -17,7 +17,7 @@ def ask(query: str) -> str:
     elif route == 'chit_chat':
         return generate_answer(query)
     else:
-        return generate_answer(query)  # using this since (route not implemented looks very odd)(We can implement many routes here)
+        return "This route is not implemented yet.(only shoes and faq related queries are supported now :))"
 
 st.title("E -commerce Chatbot")
 

@@ -12,6 +12,9 @@ load_dotenv()
 api_key = os.getenv("GOOGLE_API_KEY")
 GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")
 
+if not api_key:
+    raise ValueError("Missing GOOGLE_API_KEY in environment variables.")
+
 # Configure Gemini globally
 genai.configure(api_key=api_key)
 
@@ -24,8 +27,9 @@ DB_PATH = os.path.join(BASE_DIR, "..", "web-scraping", "db.sqlite")
 
 # ---------------- PROMPTS ----------------
 prompt = """
-You are an expert in understanding the database schema and generating SQL queries for a natural language question asked
-pertaining to the data you have. The schema is provided in the schema tags. 
+You are an expert in understanding the database schema and generating SQL queries
+for a natural language question asked pertaining to the data you have. The schema
+is provided in the schema tags.
 
 <schema> 
 table: product 
@@ -35,19 +39,16 @@ product_link - string (hyperlink to product)
 title - string (name of the product)
 brand - string (brand of the product)
 price - integer (price of the product in Indian Rupees)
-discount - float (discount on the product. 10 percent discount is represented as 0.1, 20 percent as 0.2, and such.)
-avg_rating - float (average rating of the product. Range 0–5, 5 is the highest.)
+discount - float (discount on the product. 10 percent discount is represented as 0.1, 20 percent as 0.2, etc.)
+avg_rating - float (average rating of the product, range 0–5, 5 is highest)
 total_ratings - integer (total number of ratings for the product)
 </schema>
 
-Make sure whenever you try to search for the brand name, the name can be in any case. 
-So, make sure to use %LIKE% to find the brand in condition. Never use ILIKE.
-Create a single SQL query for the question provided. 
-The query should have all the fields in SELECT clause (i.e. SELECT *).
+Whenever searching by brand name, use LIKE with case-insensitivity (convert both sides to lower()).
+Never use ILIKE. Always generate a single SQL query.
 
-Just the SQL query is needed, nothing more. Always provide the SQL in between the <SQL> </SQL> tags,
-for example: <SQL> SELECT * FROM product WHERE brand LIKE '%nike%' </SQL>.
-Do not write anything else apart from the SQL query in between the <SQL> </SQL> tags.
+Return only the SQL inside <SQL> ... </SQL> tags, like this:
+<SQL> SELECT * FROM product WHERE brand LIKE '%nike%' </SQL>
 """
 
 comprehension_prompt = """
@@ -67,46 +68,66 @@ Example:
 
 # ---------------- GEMINI HELPERS ----------------
 def generate_sql_query(question: str) -> str:
-    """
-    Generates an SQL query from a natural language question using Gemini.
-    """
+    """Generates an SQL query from a natural language question using Gemini."""
     response = client_sql.generate_content(
         contents=[
-            {"role": "system", "parts": prompt},
-            {"role": "user", "parts": question}
+            {"role": "user", "parts": [f"{prompt}\n\nUser Question: {question}"]}
         ],
         generation_config={
             "temperature": 0.2,
             "max_output_tokens": 1024
         }
     )
-    return response.text.strip() if response.text else ""
+
+    # Extract SQL safely
+    try:
+        if hasattr(response, "text") and response.text:
+            return response.text.strip()
+        elif hasattr(response, "candidates") and response.candidates:
+            parts = response.candidates[0].content.parts
+            if parts and hasattr(parts[0], "text"):
+                return parts[0].text.strip()
+    except Exception as e:
+        print(f"[WARN] Could not parse SQL response: {e}")
+    
+    return ""
+
 
 def run_query(query: str) -> pd.DataFrame:
-    """
-    Executes a SQL SELECT query and returns the results as a pandas DataFrame.
-    """
-    if query.strip().upper().startswith("SELECT"):
-        with sqlite3.connect(DB_PATH) as conn:
-            return pd.read_sql_query(query, conn)
-    else:
+    """Executes a SQL SELECT query and returns the results as a pandas DataFrame."""
+    if not query.strip().upper().startswith("SELECT"):
         raise ValueError("Invalid query: Only SELECT statements are allowed.")
+    
+    with sqlite3.connect(DB_PATH) as conn:
+        return pd.read_sql_query(query, conn)
+
 
 def data_comprehension(question: str, data) -> str:
-    """
-    Uses Gemini to generate a natural language summary of the SQL query result.
-    """
-    response = client_sql.generate_content(
-        contents=[
-            {"role": "system", "parts": comprehension_prompt},
-            {"role": "user", "parts": f"Question: {question}\nData: {data}"}
-        ],
-        generation_config={
-            "temperature": 0.2,
-            "max_output_tokens": 1024
-        }
-    )
-    return response.text.strip() if response.text else "No response generated."
+    """Uses Gemini to generate a natural language summary of the SQL query result."""
+    # Limit data size to prevent token overflow
+    if isinstance(data, list) and len(data) > 15:
+        data = data[:15]  # send first 15 records only
+
+    try:
+        response = client_sql.generate_content(
+            contents=[
+                {"role": "user", "parts": [f"{comprehension_prompt}\n\nQuestion: {question}\nData: {data}"]}
+            ]
+            
+        )
+
+        # --- Safe parsing of response ---
+        if hasattr(response, "text") and response.text:
+            return response.text.strip()
+        elif hasattr(response, "candidates") and response.candidates:
+            parts = response.candidates[0].content.parts
+            if parts and hasattr(parts[0], "text"):
+                return parts[0].text.strip()
+        return "No valid response generated by Gemini."
+    
+    except Exception as e:
+        return f"Error in data_comprehension: {str(e)}"
+
 
 def sql_chain(question: str) -> str:
     """
@@ -116,12 +137,16 @@ def sql_chain(question: str) -> str:
     3. Interpret result in natural language
     """
     sql_query = generate_sql_query(question)
+
+    # Clean markdown code blocks if any
+    sql_query = re.sub(r"```sql|```", "", sql_query)
     matches = re.findall(r"<SQL>(.*?)</SQL>", sql_query, re.DOTALL)
 
     if not matches:
-        return "Sorry, I could not generate a valid SQL query."
+        return f"Sorry, I could not generate a valid SQL query. Model output:\n{sql_query}"
 
     query = matches[0].strip()
+
     try:
         response_df = run_query(query)
     except Exception as e:
@@ -130,12 +155,14 @@ def sql_chain(question: str) -> str:
     if response_df.empty:
         return "No matching records found in the database."
 
-    context = response_df.to_dict(orient='records')
+    context = response_df.to_dict(orient="records")
     answer = data_comprehension(question, context)
     return answer
+
 
 # ---------------- MAIN ----------------
 if __name__ == "__main__":
     question = "all nike shoes in price range 1000 to 5000"
     answer = sql_chain(question)
+    print("\n--- Final Answer ---\n")
     print(answer)
