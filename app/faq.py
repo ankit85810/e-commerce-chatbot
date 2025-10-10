@@ -1,17 +1,20 @@
+import genai
 import pandas as pd
 from pathlib import Path
 import chromadb
 from chromadb.utils import embedding_functions
-from groq import Groq
+import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 
 
-if "GROQ_API_KEY" in os.environ:
-    api_key = os.environ["GROQ_API_KEY"]
+if "GOOGLE_API_KEY" in os.environ:
+    api_key = os.environ["GOOGLE_API_KEY"]
 else:
     load_dotenv()
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = os.getenv("GOOGLE_API_KEY")
+
+genai.configure(api_key=api_key)
 
 
 faqs_path = Path(__file__).parent / "resources" / "faq_data.csv"
@@ -70,18 +73,17 @@ def generate_answer(query, context):
 
     Answer:
     '''
-    groq_client = Groq(api_key=api_key)
+    model = genai.GenerativeModel(model_name="gemini-2.5-flash")
 
-    chat_completion = groq_client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=1024,
-        temperature=0.2,
-        model=os.getenv("GROQ_MODEL")
+    response = model.generate_content(
+        prompt,
+        generation_config={
+            "temperature": 0.2,
+            "max_output_tokens": 1024
+        }
     )
-    return chat_completion.choices[0].message.content
+    
+    return response.text.strip() if response.text else "No response generated."
 if __name__ == "__main__":
 
     ingest_faq_data(faqs_path)

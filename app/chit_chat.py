@@ -1,28 +1,30 @@
-from groq import Groq
+import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 
 
-if "GROQ_API_KEY" in os.environ:
-    api_key = os.environ["GROQ_API_KEY"]
+if "GOOGLE_API_KEY" in os.environ:
+    api_key = os.environ["GOOGLE_API_KEY"]
 else:
     load_dotenv()
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = os.getenv("GOOGLE_API_KEY")
+
+genai.configure(api_key=api_key)
 
 def generate_answer(query):
-    client = Groq(api_key=api_key)
+    model = genai.GenerativeModel(model_name="gemini-2.5-flash")
     prompt = f"""You are a helpful assistant for an E-commerce website. This is just a chit-chat conversation with the user. Be polite and courteous. Keep your answers short and precise."""
 
-    response = client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": query}
-        ],
-        temperature=0.5,
-        model=os.getenv("GROQ_MODEL"),
-        max_tokens=500
+    response = model.generate_content(
+        prompt,
+        generation_config={
+            "temperature": 0.5,
+            "max_output_tokens": 500
+        }
     )
-    return response.choices[0].message.content
+
+    return response.text.strip() if response.text else "No response generated."
+
 
 if __name__ == "__main__":
     query = "Hello, how are you?"
