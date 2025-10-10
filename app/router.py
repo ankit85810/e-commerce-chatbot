@@ -61,7 +61,8 @@ sql = Route(
         "show me all the products under 1000 rs",
         "list all the products from reebok",
         "Show me puma shoes with rating above 4 stars",
-        "find me nike shoes under 3000 rs"
+        "find me nike shoes under 3000 rs",
+campus women's shoes under 2000
     ]
 )
 
