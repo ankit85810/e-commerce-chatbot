@@ -9,3 +9,4 @@ langchain-chroma
 selenium
 transformers
 semantic-router[local]
+google-generativeai
